@@ -3,8 +3,9 @@
 """
 Greedy similarity remover visualizer (Matplotlib interactive version)
 
-每一步删除“与最多其它节点相似”的节点（度最大），直到图中没有相似边。
-使用 Matplotlib 交互按钮（Prev / Next）逐步查看去除过程。
+At each step, the node with the highest degree (most similar connections)
+is removed until no edges remain.
+You can interactively step through the process using Matplotlib buttons.
 """
 
 import math
@@ -13,7 +14,7 @@ from typing import List, Tuple, Dict
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Button
 
-# 可选依赖：networkx（用于更美观的布局）
+# Optional dependency: networkx (for nicer graph layouts)
 try:
     import networkx as nx
     HAVE_NX = True
@@ -21,15 +22,16 @@ except Exception:
     HAVE_NX = False
 
 
-# ---------- 核心算法 ----------
+# ---------- Core algorithm ----------
 def greedy_order_by_degree(edges: List[Tuple[str, str]]):
-    """返回删除顺序和每一步的图状态快照"""
+    """Return the removal order and snapshots of the graph state."""
     nodes = set()
     for u, v in edges:
         if u == v:
             continue
         nodes.add(u)
         nodes.add(v)
+
     adj = {u: set() for u in nodes}
     for u, v in edges:
         if u == v:
@@ -53,14 +55,16 @@ def greedy_order_by_degree(edges: List[Tuple[str, str]]):
         return any(len(nei) > 0 for nei in adj.values())
 
     while has_edges():
+        # Choose node with the largest degree (tie → lexicographically smallest)
         cand = None
         max_deg = -1
-        for u in sorted(adj.keys()):  # lexicographic tie-break
+        for u in sorted(adj.keys()):
             deg = len(adj[u])
             if deg > max_deg:
                 max_deg = deg
                 cand = u
 
+        # Save a snapshot before removing
         snapshots.append({
             "step": step,
             "nodes": sorted(adj.keys()),
@@ -69,24 +73,25 @@ def greedy_order_by_degree(edges: List[Tuple[str, str]]):
         })
         step += 1
 
-        # remove candidate
+        # Remove the chosen node
         for v in list(adj[cand]):
             adj[v].discard(cand)
         del adj[cand]
         removed.append((cand, max_deg))
 
+    # Final snapshot (no edges left)
     snapshots.append({"step": step, "nodes": sorted(adj.keys()), "edges": [], "next_remove": None})
     return removed, snapshots
 
 
 def layout_positions(nodes: List[str], edges: List[Tuple[str, str]]):
-    """节点布局：networkx spring 或圆形"""
+    """Compute node positions using spring layout (if networkx available) or circular fallback."""
     if HAVE_NX:
         G = nx.Graph()
         G.add_nodes_from(nodes)
         G.add_edges_from(edges)
         return nx.spring_layout(G, seed=42)
-    # fallback: circle
+    # Circle layout fallback
     n = len(nodes)
     pos = {}
     for i, node in enumerate(nodes):
@@ -95,8 +100,9 @@ def layout_positions(nodes: List[str], edges: List[Tuple[str, str]]):
     return pos
 
 
-# ---------- 交互可视化 ----------
+# ---------- Interactive visualization ----------
 class Stepper:
+    """Matplotlib interactive stepper: click Prev / Next to go through removal steps."""
     def __init__(self, edges: List[Tuple[str, str]]):
         removed, snaps = greedy_order_by_degree(edges)
         self.snaps = snaps
@@ -105,7 +111,7 @@ class Stepper:
         base_edges = snaps[0]["edges"] if snaps and snaps[0]["edges"] else edges
         self.pos = layout_positions(all_nodes, base_edges)
 
-        # Matplotlib figure + 按钮
+        # Create Matplotlib figure and buttons
         self.fig, self.ax = plt.subplots()
         plt.subplots_adjust(bottom=0.2)
         axprev = plt.axes([0.22, 0.05, 0.15, 0.075])
@@ -117,9 +123,11 @@ class Stepper:
         self.draw()
 
     def draw(self):
+        """Redraw the current snapshot."""
         self.ax.clear()
         s = self.snaps[self.idx]
         nodes, edges, to_remove, step = s["nodes"], s["edges"], s["next_remove"], s["step"]
+
         title = f"Step {step}"
         if to_remove is not None:
             title += f" — Next remove: {to_remove[0]} (degree {to_remove[1]})"
@@ -127,13 +135,13 @@ class Stepper:
             title += " — Done (no edges)"
         self.ax.set_title(title)
 
-        # edges
+        # Draw edges
         for (u, v) in edges:
             x1, y1 = self.pos[u]
             x2, y2 = self.pos[v]
             self.ax.plot([x1, x2], [y1, y2])
 
-        # nodes
+        # Draw nodes (larger for the next-to-remove node)
         for n in nodes:
             x, y = self.pos[n]
             size = 400 if (to_remove is not None and n == to_remove[0]) else 120
@@ -145,16 +153,19 @@ class Stepper:
         self.fig.canvas.draw_idle()
 
     def next(self, event=None):
+        """Go to next step."""
         self.idx = min(self.idx + 1, len(self.snaps) - 1)
         self.draw()
 
     def prev(self, event=None):
+        """Go to previous step."""
         self.idx = max(self.idx - 1, 0)
         self.draw()
 
 
-# ---------- 示例 ----------
+# ---------- Example ----------
 if __name__ == "__main__":
+    # Create a random similarity graph for demonstration
     random.seed(5)
     N = 12
     p = 0.22
@@ -167,5 +178,6 @@ if __name__ == "__main__":
     if not edges:
         edges.append((names[0], names[1]))
 
+    # Launch the interactive visualizer
     Stepper(edges)
     plt.show()
